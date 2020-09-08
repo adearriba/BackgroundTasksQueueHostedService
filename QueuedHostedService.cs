@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -9,16 +10,13 @@ namespace BackgroundTasksQueueHostedService
     public class QueuedHostedService : BackgroundService
     {
         private readonly ILogger<QueuedHostedService> _logger;
-
-        public QueuedHostedService(IBackgroundTaskQueue taskQueue, 
+        private Channel<IBackgroundTask> _channel;
+        public QueuedHostedService(Channel<IBackgroundTask> channel, 
             ILogger<QueuedHostedService> logger)
         {
-            TaskQueue = taskQueue;
+            _channel = channel;
             _logger = logger;
         }
-
-        public IBackgroundTaskQueue TaskQueue { get; }
-
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation(
@@ -33,17 +31,16 @@ namespace BackgroundTasksQueueHostedService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                var workItem = 
-                    await TaskQueue.DequeueAsync(stoppingToken);
+                var currentTask = await _channel.Reader.ReadAsync();
 
                 try
                 {
-                    await workItem(stoppingToken);
+                    await currentTask.DoWork(stoppingToken);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, 
-                        "Error occurred executing {WorkItem}.", nameof(workItem));
+                        "Error occurred executing {WorkItem}.", nameof(currentTask));
                 }
             }
         }
@@ -51,7 +48,6 @@ namespace BackgroundTasksQueueHostedService
         public override async Task StopAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("Queued Hosted Service is stopping.");
-
             await base.StopAsync(stoppingToken);
         }
     }

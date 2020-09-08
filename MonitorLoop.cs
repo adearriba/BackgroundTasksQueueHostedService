@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -8,76 +9,38 @@ namespace BackgroundTasksQueueHostedService
 {
     public class MonitorLoop
     {
-        private readonly IBackgroundTaskQueue _taskQueue;
+        private readonly Channel<IBackgroundTask> _channel;
         private readonly ILogger _logger;
         private readonly CancellationToken _cancellationToken;
+        private IServiceProvider _serviceProvider;
 
-        public MonitorLoop(IBackgroundTaskQueue taskQueue, 
+        public MonitorLoop(Channel<IBackgroundTask> channel, 
             ILogger<MonitorLoop> logger, 
+            IServiceProvider serviceProvider,
             IHostApplicationLifetime applicationLifetime)
         {
-            _taskQueue = taskQueue;
+            _channel = channel;
             _logger = logger;
+            _serviceProvider = serviceProvider;
             _cancellationToken = applicationLifetime.ApplicationStopping;
         }
 
         public void StartMonitorLoop()
         {
             _logger.LogInformation("Monitor Loop is starting.");
-
-            // Run a console user input loop in a background thread
             Task.Run(() => Monitor());
         }
 
         public void Monitor()
         {
-            while (!_cancellationToken.IsCancellationRequested)
+            while (!_cancellationToken.IsCancellationRequested
+                    && !_channel.Reader.Completion.IsCompleted)
             {
                 var keyStroke = Console.ReadKey();
 
                 if (keyStroke.Key == ConsoleKey.W)
                 {
-                    // Enqueue a background work item
-                    _taskQueue.QueueBackgroundWorkItem(async token =>
-                    {
-                        // Simulate three 5-second tasks to complete
-                        // for each enqueued work item
-
-                        int delayLoop = 0;
-                        var guid = Guid.NewGuid().ToString();
-
-                        _logger.LogInformation(
-                            "Queued Background Task {Guid} is starting.", guid);
-
-                        while (!token.IsCancellationRequested && delayLoop < 3)
-                        {
-                            try
-                            {
-                                await Task.Delay(TimeSpan.FromSeconds(5), token);
-                            }
-                            catch (OperationCanceledException)
-                            {
-                                // Prevent throwing if the Delay is cancelled
-                            }
-
-                            delayLoop++;
-
-                            _logger.LogInformation(
-                                "Queued Background Task {Guid} is running. " +
-                                "{DelayLoop}/3", guid, delayLoop);
-                        }
-
-                        if (delayLoop == 3)
-                        {
-                            _logger.LogInformation(
-                                "Queued Background Task {Guid} is complete.", guid);
-                        }
-                        else
-                        {
-                            _logger.LogInformation(
-                                "Queued Background Task {Guid} was cancelled.", guid);
-                        }
-                    });
+                    _channel.Writer.WriteAsync(new BackgroundTask(_serviceProvider));
                 }
             }
         }

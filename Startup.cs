@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -18,7 +19,7 @@ namespace BackgroundTasksQueueHostedService
         {
             services.AddSingleton<MonitorLoop>();
             services.AddHostedService<QueuedHostedService>();
-            services.AddSingleton<IBackgroundTaskQueue, BackgroundTaskQueue>();
+            services.AddSingleton(Channel.CreateUnbounded<IBackgroundTask>());
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
