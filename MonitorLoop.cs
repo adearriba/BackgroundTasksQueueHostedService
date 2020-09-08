@@ -33,8 +33,7 @@ namespace BackgroundTasksQueueHostedService
 
         public void Monitor()
         {
-            while (!_cancellationToken.IsCancellationRequested
-                    && !_channel.Reader.Completion.IsCompleted)
+            while (!_cancellationToken.IsCancellationRequested)
             {
                 var keyStroke = Console.ReadKey();
 
